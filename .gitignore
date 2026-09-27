@@ -24,3 +24,4 @@ pnpm-debug.log*
 # SQLite runtime files
 *.db-shm
 *.db-wal
+backend/gap.db
