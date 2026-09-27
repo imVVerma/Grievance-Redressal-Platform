@@ -1,18 +1,11 @@
 // Small presentational component — maps a status value to a label + color.
-// Keeping this separate means the status vocabulary lives in one place,
-// matching the ENUM in the submissions table.
+// The vocabulary itself lives in ./statuses so it can be shared without
+// breaking fast refresh here.
 
-const STATUS_META = {
-  submitted: { label: "Submitted", color: "#6b7280" },
-  acknowledged: { label: "Acknowledged", color: "#2563eb" },
-  in_progress: { label: "In progress", color: "#b45309" },
-  pending_council_review: { label: "Pending council review", color: "#7c3aed" },
-  resolved: { label: "Resolved", color: "#15803d" },
-  closed: { label: "Closed", color: "#374151" },
-};
+import { statusMeta } from "./statuses";
 
 export default function StatusBadge({ status }) {
-  const meta = STATUS_META[status] || { label: status, color: "#6b7280" };
+  const meta = statusMeta(status);
   return (
     <span
       style={{
