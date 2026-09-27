@@ -835,6 +835,7 @@
 }
 
 .redaction-confirm:hover:not([disabled]) {
+  background: linear-gradient(135deg, var(--primary-hover), var(--accent-to));
   transform: translateY(-1px);
   box-shadow: var(--accent-shadow-hover);
 }
@@ -845,8 +846,10 @@
   border: 1px solid var(--glass-border);
 }
 
+/* A light teal wash only — it must never approach the solid gradient, or the
+   two actions stop reading as primary and secondary. */
 .redaction-edit:hover:not([disabled]) {
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--glass-bg-hover);
   border-color: rgba(0, 160, 180, 0.4);
 }
 
