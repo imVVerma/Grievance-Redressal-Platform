@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
 const db = require('./db');
+const { presentSubmission, presentSubmissions, presentHistory } = require('./privacy');
 
 const app = express();
 app.use(cors());
@@ -59,12 +60,16 @@ const SUBMISSION_PUBLIC_COLUMNS = `
   created_at, updated_at`;
 
 // Get all submissions
+//
+// Rows are sorted by the real created_at in SQL and only then passed through
+// the display transform, so bucketing an anonymous row's timestamp for display
+// cannot reorder the list.
 app.get('/submissions', (req, res) => {
   try {
     const submissions = db
       .prepare(`SELECT ${SUBMISSION_PUBLIC_COLUMNS} FROM submissions ORDER BY created_at DESC`)
       .all();
-    res.json(submissions);
+    res.json(presentSubmissions(submissions));
   } catch (error) {
     console.error('GET /submissions failed:', error);
     res.status(500).json({ error: 'Could not load submissions.' });
@@ -235,7 +240,9 @@ app.patch('/submissions/:id/status', (req, res) => {
         .get(id);
     });
 
-    res.json(advance());
+    // An anonymous submitter gets bucketed display timestamps here too — the
+    // moment a status moved is just as identifying as the moment it was filed.
+    res.json(presentSubmission(advance()));
   } catch (error) {
     if (error instanceof RequestError) {
       return res.status(error.status).json({ error: error.message });
@@ -288,13 +295,15 @@ app.get('/submissions/token/:token', (req, res) => {
       throw notFound;
     }
 
-    const submission = db
+    const row = db
       .prepare(`SELECT ${SUBMISSION_PUBLIC_COLUMNS} FROM submissions WHERE submission_token = ?`)
       .get(token);
 
-    if (!submission) {
+    if (!row) {
       throw notFound;
     }
+
+    const submission = presentSubmission(row);
 
     // changed_at has one-second resolution, so entries written in the same
     // second would otherwise come back in arbitrary order. history_id is
@@ -308,7 +317,9 @@ app.get('/submissions/token/:token', (req, res) => {
       `)
       .all(submission.submission_id);
 
-    res.json({ ...submission, history });
+    // A history row inherits the parent submission's anonymity, so an anonymous
+    // submission's timeline is bucketed to the hour as well.
+    res.json({ ...submission, history: presentHistory(history, submission.is_anonymous) });
   } catch (error) {
     if (error instanceof RequestError) {
       return res.status(error.status).json({ error: error.message });
