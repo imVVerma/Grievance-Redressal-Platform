@@ -245,6 +245,79 @@ app.patch('/submissions/:id/status', (req, res) => {
   }
 });
 
+// Look up one submission by the token issued at creation time — the accountless
+// way for a submitter to follow their own grievance to resolution.
+//
+// This is the only route that resolves a token, and it is deliberately
+// single-row:
+//
+//   * The lookup is an equality comparison on the token column, so it rides the
+//     unique index idx_submissions_submission_token. There is no LIKE, no
+//     prefix match, no optional filter and no "list by token" variant, so the
+//     endpoint cannot be walked one submission at a time.
+//   * A token is 16 random bytes (128 bits), so guessing one is not feasible and
+//     no rate limiting is applied here. The token is the credential, so if one
+//     ever leaks — a screenshot, a shared link, browser history — the fix is to
+//     invalidate that token, not to slow this route down.
+//
+// Malformed input and a real miss are answered identically, with the same 404
+// and the same message, so the route cannot be used to test whether some other
+// token exists: a short string, a non-hex string, an uppercased token and a
+// perfectly well-formed token that simply is not in the database are all
+// indistinguishable from the outside.
+//
+// One pre-existing app-wide caveat: Express percent-decodes the path before any
+// handler runs, so a request whose *URL* carries a broken escape (%zz) fails
+// with a URIError and is answered 500 by the terminal handler below, exactly as
+// /submissions/:id/identity already does. That distinguishes a malformed URL
+// from a missing token, but it says nothing about whether any token exists, and
+// the browser UI cannot trigger it because api.js encodeURIComponent-escapes the
+// code before sending. Fixing it means touching the shared terminal handler,
+// which is out of scope here.
+//
+// The literal "token" path segment means this route can never be shadowed by
+// /submissions/:id/identity below, and neither shadows the other.
+app.get('/submissions/token/:token', (req, res) => {
+  const token = req.params.token;
+  const notFound = new RequestError(404, 'No submission found for that code.');
+
+  try {
+    // Tokens are always 32 lowercase hex characters. Checking the shape keeps
+    // the query below a pure equality lookup on a known-good value.
+    if (typeof token !== 'string' || !/^[0-9a-f]{32}$/.test(token)) {
+      throw notFound;
+    }
+
+    const submission = db
+      .prepare(`SELECT ${SUBMISSION_PUBLIC_COLUMNS} FROM submissions WHERE submission_token = ?`)
+      .get(token);
+
+    if (!submission) {
+      throw notFound;
+    }
+
+    // changed_at has one-second resolution, so entries written in the same
+    // second would otherwise come back in arbitrary order. history_id is
+    // monotonic, which makes the timeline strictly oldest-first.
+    const history = db
+      .prepare(`
+        SELECT old_status, new_status, reason, changed_at
+        FROM status_history
+        WHERE submission_id = ?
+        ORDER BY changed_at ASC, history_id ASC
+      `)
+      .all(submission.submission_id);
+
+    res.json({ ...submission, history });
+  } catch (error) {
+    if (error instanceof RequestError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+    console.error('GET /submissions/token/:token failed:', error);
+    res.status(500).json({ error: 'Could not look up that submission code.' });
+  }
+});
+
 // TEMPORARY — for local testing of the identity_map linkage only. This has zero
 // access control and must be gated behind RBAC before this goes anywhere near a
 // real deployment. Do not expose this route publicly.
