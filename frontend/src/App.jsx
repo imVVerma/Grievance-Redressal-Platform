@@ -18,7 +18,13 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Grievance Redressal</h1>
+        <div>
+          <span className="app-header-eyebrow">Student Affairs</span>
+          <h1>Grievance Redressal</h1>
+          <p className="app-header-subtitle">
+            Submit, track and resolve campus complaints and service requests.
+          </p>
+        </div>
         <nav>
           <button
             className={view === "submit" ? "active" : ""}

@@ -1,73 +1,112 @@
+/* ===========================================================================
+   Grievance Redressal — application surfaces.
+   Every colour here resolves to a token in index.css.
+   =========================================================================== */
+
 .app {
-  max-width: 800px;
+  max-width: 880px;
   margin: 0 auto;
-  padding: 40px 20px;
+  padding: 40px 20px 64px;
   width: 100%;
 }
+
+.app-main {
+  display: block;
+}
+
+/* --- Header -------------------------------------------------------------- */
 
 .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 40px;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-bottom: 36px;
   background: var(--glass-bg);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--glass-border);
-  padding: 20px 30px;
-  border-radius: 16px;
+  padding: 20px 28px;
+  border-radius: var(--radius);
   box-shadow: var(--card-shadow);
 }
 
+/* An institutional masthead reads as a solid, authoritative wordmark. The
+   gradient-filled heading this replaces was the main "startup" tell. */
 .app-header h1 {
-  font-size: 1.8rem;
+  font-size: 1.55rem;
   font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
   margin: 0;
-  background: -webkit-linear-gradient(45deg, #60a5fa, #c084fc);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--text-main);
+}
+
+.app-header-eyebrow {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--secondary);
+  margin-bottom: 6px;
+}
+
+.app-header-subtitle {
+  margin: 6px 0 0;
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: var(--text-muted);
 }
 
 .app-header nav {
   display: flex;
-  gap: 12px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .app-header nav button {
-  border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  background: rgba(0, 0, 0, 0.2);
   padding: 10px 20px;
-  font-size: 1rem;
+  font-size: 0.925rem;
+  font-family: inherit;
   font-weight: 500;
   color: var(--text-muted);
   cursor: pointer;
-  border-radius: 8px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition), color var(--transition),
+    border-color var(--transition), box-shadow var(--transition);
 }
 
 .app-header nav button:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--glass-bg-hover);
+  border-color: rgba(0, 160, 180, 0.35);
   color: var(--text-main);
 }
 
 .app-header nav button.active {
-  background: var(--primary);
+  background: var(--accent-gradient);
   color: #fff;
-  border-color: var(--primary-hover);
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.4);
+  border-color: transparent;
+  box-shadow: var(--accent-shadow);
 }
+
+/* --- Form shell ---------------------------------------------------------- */
 
 .submission-form {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 22px;
   background: var(--glass-bg);
-  backdrop-filter: blur(12px);
-  padding: 40px;
-  border-radius: 20px;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  padding: 34px;
+  border-radius: var(--radius);
   border: 1px solid var(--glass-border);
   box-shadow: var(--card-shadow);
-  animation: slideUp 0.5s ease-out;
+  animation: slideUp 0.5s var(--ease);
 }
 
 @keyframes slideUp {
@@ -75,54 +114,118 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Radio pair rendered as a segmented control rather than two loose inputs
+   floating on the glass. Shrinks to fit its content so it does not read as a
+   full-width text field. */
 .field-row {
   display: flex;
-  gap: 30px;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 6px;
+  background: var(--surface-input);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
 }
 
 .field-row label {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  padding: 10px 18px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-weight: 500;
+  font-size: 0.925rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  user-select: none;
+  transition: background var(--transition), color var(--transition),
+    box-shadow var(--transition);
+}
+
+.field-row label:hover {
+  background: rgba(255, 255, 255, 0.05);
   color: var(--text-main);
+}
+
+/* The selected segment fills with teal. :has() is the only way to style a
+   parent from its own checked control without adding a class in JSX; where it
+   is unsupported the segment simply stays unhighlighted, which is a safe
+   fallback. */
+.field-row label:has(input:checked) {
+  background: rgba(0, 120, 120, 0.32);
+  color: var(--text-main);
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(0, 160, 180, 0.4);
+}
+
+.field-row input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--secondary);
 }
 
 .field {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* One padding/height rule for every control. `select` is pinned to the same
+   box as the inputs because its intrinsic height otherwise differs by a few
+   pixels and the row of fields looks ragged. */
+.field input[type="text"],
+.field select,
+.field textarea,
+.status-reason-input,
+.list-controls select {
+  width: 100%;
+  background: var(--surface-input);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--control-radius);
+  font-size: 0.975rem;
+  font-family: inherit;
   color: var(--text-main);
+  transition: border-color var(--transition), box-shadow var(--transition),
+    background var(--transition);
 }
 
 .field input[type="text"],
 .field select,
+.list-controls select {
+  min-height: var(--control-height);
+  padding: var(--control-padding);
+}
+
 .field textarea {
   padding: 14px 16px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid var(--glass-border);
-  border-radius: 10px;
-  font-size: 1rem;
-  font-family: inherit;
-  color: var(--text-main);
-  transition: all 0.3s ease;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 116px;
 }
 
 .field input[type="text"]::placeholder,
-.field textarea::placeholder {
-  color: #64748b;
+.field textarea::placeholder,
+.status-reason-input::placeholder {
+  color: var(--text-faint);
 }
 
 .field input[type="text"]:focus,
 .field select:focus,
-.field textarea:focus {
+.field textarea:focus,
+.status-reason-input:focus,
+.list-controls select:focus {
   outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
-  background: rgba(0, 0, 0, 0.3);
+  border-color: var(--secondary);
+  box-shadow: var(--focus-ring);
+  background: var(--surface-input-focus);
 }
 
 .field select option {
@@ -131,76 +234,170 @@
 }
 
 .checkbox-field {
-  background: rgba(255, 255, 255, 0.03);
-  padding: 16px 20px !important;
-  border-radius: 12px;
-  border: 1px solid var(--glass-border);
-  cursor: pointer;
-  transition: all 0.3s;
   display: flex;
   align-items: center;
   gap: 12px;
+  padding: 16px 20px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.95rem;
+  color: var(--text-main);
+  transition: background var(--transition), border-color var(--transition);
 }
 
 .checkbox-field:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
+  background: var(--glass-bg-hover);
+  border-color: rgba(0, 160, 180, 0.35);
 }
 
 .checkbox-field input[type="checkbox"] {
   width: 18px;
   height: 18px;
+  margin: 0;
+  flex-shrink: 0;
   accent-color: var(--primary);
+}
+
+/* --- Buttons ------------------------------------------------------------- */
+
+/* Shared geometry for every button in the app, so the primary action, the
+   status action and the copy action read as one family. */
+.submission-form button[type="submit"],
+.status-action,
+.token-copy,
+.redaction-preview-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: transform var(--transition), box-shadow var(--transition),
+    background var(--transition), border-color var(--transition);
 }
 
 .submission-form button[type="submit"] {
   align-self: flex-start;
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  background: var(--accent-gradient);
   color: #fff;
-  border: none;
-  padding: 14px 32px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-size: 1.05rem;
-  font-weight: 600;
-  transition: transform 0.2s, box-shadow 0.2s;
-  box-shadow: 0 4px 15px rgba(236, 72, 153, 0.3);
+  border: 1px solid transparent;
+  padding: 0 30px;
+  min-height: 46px;
+  box-shadow: var(--accent-shadow);
 }
 
-.submission-form button[type="submit"]:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(236, 72, 153, 0.5);
+.submission-form button[type="submit"]:hover:not([disabled]) {
+  transform: translateY(-1px);
+  box-shadow: var(--accent-shadow-hover);
 }
 
-.submission-form button[disabled] {
-  opacity: 0.5;
+.submission-form button[disabled],
+.status-action[disabled],
+.redaction-preview-actions button:disabled {
+  opacity: 0.55;
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
 }
 
+/* --- Feedback surfaces --------------------------------------------------- */
+
 .form-error {
-  color: #fca5a5;
-  font-size: 0.95rem;
+  color: #fda4af;
+  font-size: 0.925rem;
+  line-height: 1.5;
   padding: 12px 16px;
-  background: rgba(248, 113, 113, 0.15);
-  border-radius: 8px;
-  border: 1px solid rgba(248, 113, 113, 0.3);
+  background: rgba(244, 63, 94, 0.12);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(244, 63, 94, 0.32);
+  border-left: 3px solid var(--danger);
   margin: 0;
 }
 
+.list-feedback {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 0.925rem;
+  line-height: 1.5;
+}
+
+.list-feedback.success {
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-left: 3px solid var(--success);
+}
+
+.list-feedback.error {
+  color: #fda4af;
+  background: rgba(244, 63, 94, 0.12);
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  border-left: 3px solid var(--danger);
+}
+
+.loading-state {
+  margin: 0;
+  padding: 18px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.925rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius);
+}
+
+.empty-state {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 48px 24px;
+  background: var(--glass-bg);
+  border-radius: var(--radius);
+  border: 1px dashed var(--glass-border);
+  line-height: 1.6;
+}
+
+/* --- Status badge -------------------------------------------------------- */
+
+/* The background colour is still set inline from statuses.js, since it is
+   per-status data rather than a theme decision. */
+.status-badge {
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #fff;
+  white-space: nowrap;
+}
+
+/* --- Browse list --------------------------------------------------------- */
+
+.submission-list {
+  display: flex;
+  flex-direction: column;
+}
+
 .list-controls {
-  margin-bottom: 24px;
+  margin-bottom: 22px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .list-controls select {
-  padding: 10px 16px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid var(--glass-border);
-  border-radius: 8px;
-  color: var(--text-main);
-  font-family: inherit;
-  font-size: 0.95rem;
+  width: auto;
+  min-width: 220px;
+  max-width: 100%;
+  font-size: 0.925rem;
+  cursor: pointer;
 }
 
 .list {
@@ -212,14 +409,19 @@
   gap: 16px;
 }
 
+/* Same glass recipe as the header, form and track result — including the card
+   shadow, which this surface was previously missing. */
 .list-item {
   background: var(--glass-bg);
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--glass-border);
-  border-radius: 16px;
+  border-radius: var(--radius);
   padding: 24px;
-  transition: transform 0.2s, background 0.2s;
-  animation: slideUp 0.5s ease-out backwards;
+  box-shadow: var(--card-shadow);
+  transition: transform var(--transition), background var(--transition),
+    border-color var(--transition), box-shadow var(--transition);
+  animation: slideUp 0.5s var(--ease) backwards;
 }
 
 .list-item:nth-child(2) { animation-delay: 0.1s; }
@@ -227,50 +429,62 @@
 .list-item:nth-child(4) { animation-delay: 0.3s; }
 
 .list-item:hover {
-  transform: translateY(-3px);
-  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-2px);
+  background: var(--glass-bg-hover);
+  border-color: rgba(0, 160, 180, 0.3);
+  box-shadow: 0 14px 36px 0 rgba(0, 0, 0, 0.45);
 }
 
 .list-item-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   gap: 16px;
   margin-bottom: 12px;
 }
 
 .list-item-title {
   font-weight: 600;
-  font-size: 1.25rem;
+  font-size: 1.15rem;
+  line-height: 1.4;
   color: var(--text-main);
 }
 
 .list-item-description {
   color: var(--text-muted);
-  font-size: 1rem;
-  line-height: 1.6;
-  margin: 0 0 16px 0;
+  font-size: 0.975rem;
+  font-weight: 400;
+  line-height: 1.65;
+  margin: 0 0 14px 0;
 }
 
 .list-item-location {
-  font-size: 0.85rem !important;
-  color: #e2e8f0 !important;
-  margin-bottom: 16px !important;
   display: inline-block;
-  background: rgba(255, 255, 255, 0.1);
-  padding: 6px 12px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin: 0 0 16px 0;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  padding: 5px 12px;
+}
+
+.list-item-location strong {
+  color: var(--text-main);
+  font-weight: 600;
 }
 
 .list-item-meta {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-start;
-  gap: 24px;
-  font-size: 0.85rem;
-  color: #94a3b8;
+  gap: 20px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted);
   border-top: 1px solid var(--glass-border);
-  padding-top: 16px;
+  padding-top: 14px;
 }
 
 .list-item-meta span {
@@ -279,19 +493,12 @@
   gap: 6px;
 }
 
-.empty-state {
-  color: var(--text-muted);
-  text-align: center;
-  padding: 60px 20px;
-  background: var(--glass-bg);
-  border-radius: 16px;
-  border: 1px dashed var(--glass-border);
-}
+/* --- Status advancement -------------------------------------------------- */
 
 .status-action-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
   align-items: center;
   margin-top: 16px;
   padding-top: 16px;
@@ -299,112 +506,70 @@
 }
 
 .status-reason-input {
-  flex: 1;
-  min-width: 180px;
+  flex: 1 1 220px;
+  min-width: 0;
+  min-height: 42px;
   padding: 10px 14px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid var(--glass-border);
-  border-radius: 8px;
-  color: var(--text-main);
-  font-family: inherit;
   font-size: 0.9rem;
-  transition: border-color 0.3s ease, box-shadow 0.3s ease;
-}
-
-.status-reason-input::placeholder {
-  color: #64748b;
-}
-
-.status-reason-input:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
 }
 
 .status-action {
   flex-shrink: 0;
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  background: var(--accent-gradient);
   color: #fff;
-  border: none;
-  padding: 10px 18px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 0.9rem;
-  font-weight: 600;
-  transition: transform 0.2s, box-shadow 0.2s;
-  box-shadow: 0 4px 15px rgba(236, 72, 153, 0.3);
+  border: 1px solid transparent;
+  padding: 0 18px;
+  min-height: 42px;
+  box-shadow: var(--accent-shadow);
 }
 
 .status-action:hover:not([disabled]) {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(236, 72, 153, 0.5);
+  box-shadow: var(--accent-shadow-hover);
 }
 
-.status-action[disabled] {
-  opacity: 0.5;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-.list-feedback {
-  margin: 0 0 16px;
-  padding: 12px 16px;
-  border-radius: 8px;
-  font-size: 0.95rem;
-}
-
-.list-feedback.success {
-  color: #6ee7b7;
-  background: rgba(16, 185, 129, 0.15);
-  border: 1px solid rgba(16, 185, 129, 0.3);
-}
-
-.list-feedback.error {
-  color: #fca5a5;
-  background: rgba(248, 113, 113, 0.15);
-  border: 1px solid rgba(248, 113, 113, 0.3);
-}
-
-/* --- Token receipt: shown after a successful submit --------------------- */
+/* --- Token receipt ------------------------------------------------------- */
 
 .token-receipt {
-  background: rgba(16, 185, 129, 0.12);
-  border: 1px solid rgba(16, 185, 129, 0.35);
-  border-radius: 16px;
+  background: rgba(16, 185, 129, 0.09);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(16, 185, 129, 0.32);
+  border-radius: var(--radius);
   padding: 24px;
-  animation: slideUp 0.5s ease-out;
+  box-shadow: var(--card-shadow);
+  animation: slideUp 0.5s var(--ease);
 }
 
 .token-receipt-title {
   margin: 0 0 8px;
-  font-size: 1.1rem;
+  font-size: 1.05rem;
   font-weight: 600;
   color: #6ee7b7;
 }
 
 .token-receipt-note {
-  margin: 0 0 16px;
+  margin: 0 0 18px;
   font-size: 0.9rem;
-  line-height: 1.6;
+  line-height: 1.65;
   color: var(--text-muted);
 }
 
 .token-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
   align-items: stretch;
 }
 
 .token-value {
-  flex: 1;
-  min-width: 200px;
+  flex: 1 1 240px;
+  min-width: 0;
+  min-height: 46px;
   padding: 12px 16px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(16, 185, 129, 0.4);
-  border-radius: 10px;
+  background: var(--surface-input);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  border-radius: var(--radius-sm);
   color: #6ee7b7;
   font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   font-size: 0.95rem;
@@ -413,103 +578,121 @@
 
 .token-value:focus {
   outline: none;
-  border-color: #6ee7b7;
+  border-color: var(--success);
   box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
 }
 
 .token-copy {
   flex-shrink: 0;
-  background: linear-gradient(135deg, var(--primary), var(--secondary));
+  background: var(--accent-gradient);
   color: #fff;
-  border: none;
-  padding: 12px 22px;
-  border-radius: 10px;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 0.9rem;
-  font-weight: 600;
-  transition: transform 0.2s, box-shadow 0.2s;
+  border: 1px solid transparent;
+  padding: 0 22px;
+  min-height: 46px;
+  box-shadow: var(--accent-shadow);
 }
 
 .token-copy:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(236, 72, 153, 0.4);
+  box-shadow: var(--accent-shadow-hover);
 }
 
 .token-copy-failed {
   margin: 12px 0 0;
   font-size: 0.85rem;
+  line-height: 1.5;
   color: #fcd34d;
 }
 
+.token-receipt-redacted {
+  margin: 14px 0 0;
+  padding: 10px 14px;
+  border-left: 3px solid var(--warning);
+  border-radius: 4px;
+  background: rgba(245, 158, 11, 0.1);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: #fcd34d;
+}
+
+/* Was a bare underlined link; now a quiet text button in the same family as
+   the rest, so the receipt has no one visually detached control. */
 .token-dismiss {
   margin-top: 16px;
-  background: none;
-  border: none;
-  padding: 0;
+  background: transparent;
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 8px 16px;
   color: var(--text-muted);
   font-family: inherit;
-  font-size: 0.85rem;
-  text-decoration: underline;
+  font-size: 0.825rem;
+  font-weight: 500;
   cursor: pointer;
+  transition: background var(--transition), color var(--transition),
+    border-color var(--transition);
 }
 
 .token-dismiss:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(0, 160, 180, 0.35);
   color: var(--text-main);
 }
 
-/* --- Track view --------------------------------------------------------- */
+/* --- Track view ---------------------------------------------------------- */
 
 .track {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 22px;
 }
 
 .track-form {
-  gap: 20px;
+  gap: 18px;
 }
 
 .track-heading {
   margin: 0;
-  font-size: 1.4rem;
+  font-size: 1.3rem;
   font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--text-main);
 }
 
 .track-blurb {
-  margin: -8px 0 0;
-  font-size: 0.95rem;
+  margin: -6px 0 0;
+  font-size: 0.925rem;
   color: var(--text-muted);
 }
 
 .track-not-found {
   color: #fcd34d;
-  font-size: 0.95rem;
+  font-size: 0.925rem;
   padding: 12px 16px;
-  background: rgba(251, 191, 36, 0.12);
-  border-radius: 8px;
-  border: 1px solid rgba(251, 191, 36, 0.3);
+  background: rgba(245, 158, 11, 0.1);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-left: 3px solid var(--warning);
   margin: 0;
 }
 
 .track-result {
   background: var(--glass-bg);
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--glass-border);
-  border-radius: 16px;
+  border-radius: var(--radius);
   padding: 24px;
   box-shadow: var(--card-shadow);
-  animation: slideUp 0.5s ease-out;
+  animation: slideUp 0.5s var(--ease);
 }
 
 .track-timeline-heading {
   margin: 24px 0 16px;
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 600;
   color: var(--text-main);
   border-top: 1px solid var(--glass-border);
-  padding-top: 24px;
+  padding-top: 22px;
 }
 
 .timeline {
@@ -518,12 +701,12 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .timeline-entry {
   border-left: 2px solid var(--glass-border);
-  padding: 4px 0 4px 16px;
+  padding: 4px 0 4px 18px;
   position: relative;
 }
 
@@ -535,7 +718,8 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--primary);
+  background: var(--secondary);
+  box-shadow: 0 0 0 3px rgba(0, 160, 180, 0.18);
 }
 
 .timeline-entry-head {
@@ -547,17 +731,168 @@
 
 .timeline-from {
   font-size: 0.8rem;
-  color: #94a3b8;
+  color: var(--text-muted);
 }
 
 .timeline-reason {
   margin: 8px 0 4px;
   font-size: 0.9rem;
-  line-height: 1.5;
+  line-height: 1.6;
   color: var(--text-muted);
 }
 
 .timeline-time {
-  font-size: 0.8rem;
-  color: #64748b;
+  font-size: 0.78rem;
+  color: var(--text-faint);
+}
+
+/* --- Redaction preview --------------------------------------------------- */
+
+/* The attention surface stays amber — it is a warning, not an error — but it
+   is rebuilt on the dark ground so it no longer flashes a cream card inside a
+   dark portal. */
+.redaction-preview {
+  margin: 0;
+  padding: 18px 20px;
+  border: 1px solid rgba(245, 158, 11, 0.32);
+  border-left: 3px solid var(--warning);
+  border-radius: var(--radius-sm);
+  background: rgba(245, 158, 11, 0.09);
+  animation: slideUp 0.3s var(--ease);
+}
+
+.redaction-preview-title {
+  margin: 0 0 8px;
+  font-size: 0.975rem;
+  font-weight: 600;
+  color: #fcd34d;
+}
+
+.redaction-preview-note {
+  margin: 0 0 14px;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #fde68a;
+}
+
+.redaction-preview-note code {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: #fcd34d;
+}
+
+.redaction-preview-text {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--glass-border);
+}
+
+.redaction-preview-text dt {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-top: 10px;
+}
+
+.redaction-preview-text dt:first-child {
+  margin-top: 0;
+}
+
+.redaction-preview-text dd {
+  margin: 4px 0 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--text-main);
+}
+
+.redaction-preview-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.redaction-preview-actions button {
+  min-height: 42px;
+  padding: 0 18px;
+  font-size: 0.9rem;
+}
+
+/* Same teal-to-aqua primary as the main submit — the confirmation *is* the
+   primary action of the form, so it should look like one. */
+.redaction-confirm {
+  background: var(--accent-gradient);
+  color: #fff;
+  border: 1px solid transparent;
+  box-shadow: var(--accent-shadow);
+}
+
+.redaction-confirm:hover:not([disabled]) {
+  transform: translateY(-1px);
+  box-shadow: var(--accent-shadow-hover);
+}
+
+.redaction-edit {
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-main);
+  border: 1px solid var(--glass-border);
+}
+
+.redaction-edit:hover:not([disabled]) {
+  background: rgba(0, 0, 0, 0.4);
+  border-color: rgba(0, 160, 180, 0.4);
+}
+
+/* --- Responsive ---------------------------------------------------------- */
+
+@media (max-width: 720px) {
+  .app {
+    padding: 24px 14px 48px;
+  }
+
+  .app-header {
+    padding: 18px 20px;
+  }
+
+  .app-header nav {
+    width: 100%;
+  }
+
+  .app-header nav button {
+    flex: 1;
+    padding: 10px 12px;
+  }
+
+  .submission-form {
+    padding: 22px 18px;
+    gap: 18px;
+  }
+
+  .list-item,
+  .track-result,
+  .token-receipt {
+    padding: 18px;
+  }
+
+  .status-action,
+  .token-copy {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

@@ -7,17 +7,10 @@ import { statusMeta } from "./statuses";
 export default function StatusBadge({ status }) {
   const meta = statusMeta(status);
   return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "2px 10px",
-        borderRadius: "999px",
-        fontSize: "0.8rem",
-        fontWeight: 600,
-        color: "#fff",
-        backgroundColor: meta.color,
-      }}
-    >
+    // Only the per-status background stays inline, because it is data rather
+    // than a theme decision. Typography, radius and spacing come from
+    // .status-badge so badges match the rest of the surfaces.
+    <span className="status-badge" style={{ backgroundColor: meta.color }}>
       {meta.label}
     </span>
   );

@@ -1,19 +1,74 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
+/* ---------------------------------------------------------------------------
+   Theme tokens.
+
+   The palette is the Plaksha academic set: a deep teal primary, a brighter aqua
+   for interactive highlights, and a near-black navy ground. The previous
+   indigo/pink pairing read as a consumer tech product; teal-on-navy reads as an
+   institutional portal, which is what this is.
+
+   Everything below the divider is derived from the tokens above rather than
+   hardcoded, so the whole surface can be re-themed from this one block.
+   --------------------------------------------------------------------------- */
 :root {
-  --primary: #4F46E5;
-  --primary-hover: #4338CA;
-  --secondary: #ec4899;
-  --bg-color: #0f172a;
-  --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
-  --text-main: #f8fafc;
+  /* Brand */
+  --primary: #007878;
+  --primary-hover: #005f5f;
+  --secondary: #00a0b4;
+
+  /* Ground */
+  --bg-color: #0b1d22;
+  --bg-gradient: linear-gradient(135deg, #07161b 0%, #0d2830 100%);
+
+  /* Text */
+  --text-main: #f2f6f7;
   --text-muted: #94a3b8;
-  --glass-bg: rgba(255, 255, 255, 0.05);
-  --glass-border: rgba(255, 255, 255, 0.1);
-  --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  --text-faint: #7d8f9c;
+
+  /* Glass surfaces */
+  --glass-bg: rgba(0, 120, 120, 0.08);
+  --glass-bg-hover: rgba(0, 120, 120, 0.14);
+  --glass-border: rgba(0, 160, 180, 0.15);
+  --card-shadow: 0 10px 30px 0 rgba(0, 0, 0, 0.4);
+
+  /* Semantic */
   --success: #10b981;
   --warning: #f59e0b;
   --danger: #ef4444;
+
+  /* --- derived ---------------------------------------------------------- */
+  /* Inputs sit on a darker plane than the glass they live in, so the control
+     edge stays legible without a heavy border. */
+  --surface-input: rgba(0, 0, 0, 0.28);
+  --surface-input-focus: rgba(0, 0, 0, 0.38);
+
+  /* The aqua that fills a button behind white text. Deliberately deeper than
+     --secondary: #00a0b4 only reaches 3.1:1 against white, so a
+     primary -> secondary gradient would render its light end unreadable. This
+     step keeps the same hue and reads as the same teal-to-aqua family while
+     holding 5.1:1 worst-case across the whole ramp. --secondary is still the
+     right colour everywhere it is not behind text: borders, focus rings,
+     active indicators. */
+  --accent-to: #00798a;
+
+  --accent-gradient: linear-gradient(135deg, var(--primary), var(--accent-to));
+  --accent-shadow: 0 4px 14px rgba(0, 120, 120, 0.35);
+  --accent-shadow-hover: 0 8px 22px rgba(0, 120, 120, 0.45);
+
+  --focus-ring: 0 0 0 3px rgba(0, 160, 180, 0.28);
+
+  /* One height for every single-line control, so a select never sits a few
+     pixels proud of the input beside it. */
+  --control-height: 48px;
+  --control-radius: 10px;
+  --control-padding: 0 16px;
+
+  --radius: 14px;
+  --radius-sm: 10px;
+
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --transition: 0.2s var(--ease);
 }
 
 body {
@@ -29,6 +84,12 @@ body {
 
 * {
   box-sizing: border-box;
+}
+
+/* Native radios, checkboxes and scrollbars pick up the brand colour. */
+input[type="radio"],
+input[type="checkbox"] {
+  accent-color: var(--primary);
 }
 
 #root {

@@ -95,7 +95,7 @@ export default function SubmissionList({ refreshKey }) {
         </p>
       )}
 
-      {loading && <p>Loading…</p>}
+      {loading && <p className="loading-state">Loading…</p>}
 
       {!loading && visible.length === 0 && (
         <p className="empty-state">Nothing here yet — submit something to see it appear.</p>
@@ -112,7 +112,11 @@ export default function SubmissionList({ refreshKey }) {
                 <StatusBadge status={s.status} />
               </div>
               <p className="list-item-description">{s.description}</p>
-              {s.location && <p className="list-item-location" style={{ fontSize: '0.9em', color: '#666', marginTop: '4px' }}><strong>Location:</strong> {s.location}</p>}
+              {s.location && (
+                <p className="list-item-location">
+                  <strong>Location:</strong> {s.location}
+                </p>
+              )}
               <div className="list-item-meta">
                 <span>{s.submission_type === "request" ? "Request" : "Complaint"}</span>
                 <span>{s.is_anonymous ? "🕵️ Anonymous" : "👤 Known User"}</span>

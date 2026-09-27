@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createSubmission } from "./api";
+import { createSubmission, previewRedaction } from "./api";
 
 // Placeholder lists — once you build the /departments and /categories
 // endpoints (matching the schema's tables), fetch these instead of
@@ -29,7 +29,42 @@ const initialForm = {
 
 // Exported on its own so it can be rendered and inspected in a test without
 // driving the whole form.
-export function TokenReceipt({ token, wasAnonymous, copied, copyFailed, onCopy, onDismiss }) {
+//
+// RedactionPreview is the pre-submission safety net. It shows the exact text
+// that will be stored so the change is never a surprise, and it offers a way
+// back into the form rather than forcing the masked version on anyone.
+export function RedactionPreview({ preview, onConfirm, onEdit, busy }) {
+  return (
+    <div className="redaction-preview" role="status">
+      <h3 className="redaction-preview-title">We found a name in your text</h3>
+      <p className="redaction-preview-note">
+        To protect the people you mention, names are replaced with{" "}
+        <code>[REDACTED]</code> before anything is stored. This is what will be
+        saved:
+      </p>
+
+      <dl className="redaction-preview-text">
+        <dt>Title</dt>
+        <dd>{preview.redactedTitle}</dd>
+        <dt>Description</dt>
+        <dd>{preview.redactedDescription}</dd>
+      </dl>
+
+      <div className="redaction-preview-actions">
+        <button type="button" className="redaction-confirm" onClick={onConfirm} disabled={busy}>
+          {busy ? "Submitting…" : "Submit this version"}
+        </button>
+        <button type="button" className="redaction-edit" onClick={onEdit} disabled={busy}>
+          Edit and check again
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Exported on its own so it can be rendered and inspected in a test without
+// driving the whole form.
+export function TokenReceipt({ token, wasAnonymous, copied, copyFailed, redacted, onCopy, onDismiss }) {
   return (
     <div className="token-receipt" role="status">
       <h3 className="token-receipt-title">Save this code to check your status later</h3>
@@ -59,6 +94,14 @@ export function TokenReceipt({ token, wasAnonymous, copied, copyFailed, onCopy, 
         </p>
       )}
 
+      {redacted && (
+        <p className="token-receipt-redacted">
+          Note: a name was detected in your text as you submitted it, so we
+          stored the redacted version instead. The text you see above is what
+          was saved.
+        </p>
+      )}
+
       <button type="button" className="token-dismiss" onClick={onDismiss}>
         Dismiss
       </button>
@@ -75,6 +118,12 @@ export default function SubmissionForm({ onSubmitted }) {
   const [receipt, setReceipt] = useState(null);
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
+  // Set only when the server says it would mask something. While it is held,
+  // nothing has been submitted — the user still has the final say.
+  const [preview, setPreview] = useState(null);
+  const [checking, setChecking] = useState(false);
+
+  const busy = submitting || checking;
 
   const filteredCategories = CATEGORIES.filter(
     (c) => c.submission_type === form.submission_type
@@ -98,6 +147,33 @@ export default function SubmissionForm({ onSubmitted }) {
     }
   }
 
+  async function sendToServer(title, description) {
+    try {
+      const created = await createSubmission({
+        ...form,
+        title,
+        description,
+        category_id: form.category_id || null,
+        department_id: form.department_id || null,
+      });
+      setReceipt({
+        token: created.submission_token,
+        wasAnonymous: form.is_anonymous,
+        // The server redacts again on the way in, so this can be true even when
+        // the preview found nothing — the last edit may have slipped a name past
+        // the check. Either way the user is told the stored text was altered.
+        redacted: created.redacted === true,
+      });
+      setCopied(false);
+      setCopyFailed(false);
+      setForm(initialForm);
+      setPreview(null);
+      onSubmitted?.();
+    } catch {
+      setError("Could not submit right now. Try again.");
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
@@ -107,23 +183,49 @@ export default function SubmissionForm({ onSubmitted }) {
       return;
     }
 
-    setSubmitting(true);
+    setChecking(true);
     try {
-      const created = await createSubmission({
-        ...form,
-        category_id: form.category_id || null,
-        department_id: form.department_id || null,
+      const result = await previewRedaction({
+        title: form.title,
+        description: form.description,
       });
-      setReceipt({ token: created.submission_token, wasAnonymous: form.is_anonymous });
-      setCopied(false);
-      setCopyFailed(false);
-      setForm(initialForm);
-      onSubmitted?.();
-    } catch (err) {
-      setError("Could not submit right now. Try again.");
+
+      if (result.flaggedCount > 0) {
+        // Hold here. Nothing is sent until the user confirms the masked text.
+        setPreview(result);
+        return;
+      }
+
+      // Nothing flagged, so there is nothing to confirm — submit as typed.
+      setChecking(false);
+      setSubmitting(true);
+      await sendToServer(form.title, form.description);
+    } catch {
+      setError("Could not check your text for names right now. Try again.");
     } finally {
+      setChecking(false);
       setSubmitting(false);
     }
+  }
+
+  function confirmRedacted() {
+    if (!preview) return;
+    setSubmitting(true);
+    sendToServer(preview.redactedTitle, preview.redactedDescription).finally(() =>
+      setSubmitting(false)
+    );
+  }
+
+  // Hand the masked text back to the form so the user can reword around it
+  // rather than being stuck with [REDACTED] forever.
+  function editAndRecheck() {
+    if (!preview) return;
+    setForm((prev) => ({
+      ...prev,
+      title: preview.redactedTitle,
+      description: preview.redactedDescription,
+    }));
+    setPreview(null);
   }
 
   return (
@@ -211,7 +313,7 @@ export default function SubmissionForm({ onSubmitted }) {
         </select>
       </label>
 
-      <label className="checkbox-field" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px', fontWeight: 'bold' }}>
+      <label className="checkbox-field">
         <input
           type="checkbox"
           checked={form.is_anonymous}
@@ -222,14 +324,24 @@ export default function SubmissionForm({ onSubmitted }) {
 
       {error && <p className="form-error">{error}</p>}
 
-      <button type="submit" disabled={submitting}>
-        {submitting ? "Submitting…" : "Submit"}
+      {preview && (
+        <RedactionPreview
+          preview={preview}
+          busy={busy}
+          onConfirm={confirmRedacted}
+          onEdit={editAndRecheck}
+        />
+      )}
+
+      <button type="submit" disabled={busy}>
+        {checking ? "Checking…" : submitting ? "Submitting…" : "Submit"}
       </button>
 
       {receipt && (
         <TokenReceipt
           token={receipt.token}
           wasAnonymous={receipt.wasAnonymous}
+          redacted={receipt.redacted}
           copied={copied}
           copyFailed={copyFailed}
           onCopy={handleCopy}
