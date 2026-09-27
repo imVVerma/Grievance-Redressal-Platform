@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchSubmissions, updateSubmissionStatus } from "./api";
 import StatusBadge from "./StatusBadge";
 import { labelForStatus, nextStatusFor } from "./statuses";
+import { canAdvanceStatus } from "./staffAccess";
+import { formatTimestamp } from "./datetime";
 
 // Pre-filled into the reason box so a one-click advance still records a usable
 // reason, while letting whoever is triaging add the real detail.
@@ -15,7 +17,7 @@ const SUGGESTED_REASONS = {
 
 const MAX_REASON_LENGTH = 255;
 
-export default function SubmissionList({ refreshKey }) {
+export default function SubmissionList({ refreshKey, session }) {
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [typeFilter, setTypeFilter] = useState("all");
@@ -23,6 +25,16 @@ export default function SubmissionList({ refreshKey }) {
   const [draftReasons, setDraftReasons] = useState({});
   const [busyId, setBusyId] = useState(null);
   const [feedback, setFeedback] = useState(null);
+  // The staff session comes in as a prop from the app shell rather than being
+  // fetched here. The header indicator shows the same value, and the two cannot
+  // drift apart: signing in or out rewrites the one copy, so the action rows
+  // below appear or disappear in the same paint as the header. A private fetch
+  // in this component would be a second source of truth, and could disagree
+  // with the indicator for as long as it took to notice.
+  //
+  // null means "not known yet" and canAdvanceStatus treats it as signed out, so
+  // no controls flash before the session lookup settles.
+  const staff = session;
 
   const load = useCallback(() => {
     setLoading(true);
@@ -120,12 +132,17 @@ export default function SubmissionList({ refreshKey }) {
               <div className="list-item-meta">
                 <span>{s.submission_type === "request" ? "Request" : "Complaint"}</span>
                 <span>{s.is_anonymous ? "🕵️ Anonymous" : "👤 Known User"}</span>
-                <span>{new Date(s.created_at).toLocaleString()}</span>
+                <span>{formatTimestamp(s.created_at)}</span>
               </div>
 
               {/* Only the immediate next status is ever offered, and a closed
-                  submission gets no action at all. */}
-              {next && (
+                  submission gets no action at all. canAdvanceStatus applies the
+                  same rule as the server gate — a signed-out visitor, a staff
+                  member looking at another department's item, and anyone but
+                  council/admin facing a resolved -> closed transition all get
+                  no button here, rather than a button whose click would be
+                  refused. */}
+              {canAdvanceStatus(staff, s, next) && (
                 <div className="status-action-row">
                   <input
                     type="text"
