@@ -2,11 +2,46 @@ const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
 const db = require('./db');
+const auth = require('./auth');
 const { presentSubmission, presentSubmissions, presentHistory } = require('./privacy');
+const { redactNames, previewRedaction } = require('./redact');
 
 const app = express();
-app.use(cors());
+
+// --- CORS ------------------------------------------------------------------
+// The SPA is served from a different origin (Vite on :5173), so staff sessions
+// have to cross origins. That requires two things the previous blanket
+// app.use(cors()) could not provide:
+//
+//   * credentials: true, so the browser sends and stores the session cookie, and
+//   * an explicit origin list, because the CORS spec forbids pairing a wildcard
+//     origin with credentials. A wildcard would mean "any site may make
+//     authenticated calls with the user's session", which is precisely the
+//     cross-site request forgery this gate is meant to prevent.
+//
+// The allowlist is the control that makes the session safe; the cookie's
+// SameSite is a second, independent layer. Override with CORS_ORIGIN.
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin(origin, callback) {
+    // No Origin header: a same-origin request, curl, or a server-to-server
+    // call. Nothing cross-origin is happening, so allow it through.
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    callback(new Error(`Origin ${origin} is not allowed.`));
+  },
+  credentials: true,
+}));
+
 app.use(express.json());
+
+// Mounted before the routes so every handler can read req.session, and before
+// the first staff route so /staff/login has a session to write to.
+app.use(auth.sessionMiddleware());
 
 // Authoritative status order. A submission may only move to the immediate
 // next entry, so anything else is rejected. Must stay in sync with the CHECK
@@ -76,7 +111,84 @@ app.get('/submissions', (req, res) => {
   }
 });
 
+// Reference data for the submission form's dropdowns.
+//
+// Public, like the form itself: a student needs these in order to file a
+// grievance and has no account to sign in with, so requiring a session here
+// would leave the form unrenderable for exactly the people who need it most.
+// What these routes expose is organisational vocabulary — department and
+// category names — and not a single row of anyone's grievance, so there is no
+// per-submitter data to gate.
+//
+// Ordered by primary key rather than by name so the list is stable between
+// calls and keeps the same order the ids are handed out in. Sorting by name
+// would make the dropdown jump around if a department were ever renamed.
+app.get('/departments', (req, res) => {
+  try {
+    const departments = db
+      .prepare(`
+        SELECT department_id, name, description
+        FROM departments
+        ORDER BY department_id
+      `)
+      .all();
+    res.json(departments);
+  } catch (error) {
+    console.error('GET /departments failed:', error);
+    res.status(500).json({ error: 'Could not load departments.' });
+  }
+});
+
+// The categories a submitter can pick from, with the submission_type they apply
+// to. Public for the same reason as /departments, and the client filters by
+// submission_type rather than the server, so that switching the type on the
+// form needs no second request.
+app.get('/categories', (req, res) => {
+  try {
+    const categories = db
+      .prepare(`
+        SELECT category_id, name, submission_type, department_id
+        FROM categories
+        ORDER BY category_id
+      `)
+      .all();
+    res.json(categories);
+  } catch (error) {
+    console.error('GET /categories failed:', error);
+    res.status(500).json({ error: 'Could not load categories.' });
+  }
+});
+
+// Show a submitter what name redaction will do to their text before anything is
+// stored. Preview only: this reads no rows and writes none, so it can be called
+// as often as the user likes while they edit.
+app.post('/submissions/redact-preview', (req, res) => {
+  const { title, description } = req.body ?? {};
+
+  try {
+    if (title !== undefined && typeof title !== 'string') {
+      throw badRequest('title must be a string.');
+    }
+    if (description !== undefined && typeof description !== 'string') {
+      throw badRequest('description must be a string.');
+    }
+
+    // Only the masked text and a count come back. The detected names themselves
+    // are the sensitive payload and are deliberately not echoed.
+    res.json(previewRedaction(title ?? '', description ?? ''));
+  } catch (error) {
+    if (error instanceof RequestError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+    console.error('POST /submissions/redact-preview failed:', error);
+    res.status(500).json({ error: 'Could not check the text for names.' });
+  }
+});
+
 // Create a new submission
+//
+// Name redaction runs here unconditionally; see below. This route is the only
+// writer of submissions rows.
 app.post('/submissions', (req, res) => {
   const { submission_type, title, description, category_id, department_id, location, is_anonymous, user_email } = req.body ?? {};
 
@@ -93,6 +205,18 @@ app.post('/submissions', (req, res) => {
     if (!trimmedDescription) {
       throw badRequest('description is required.');
     }
+
+    // Name and email-address redaction run here, unconditionally, and their
+    // results are what gets written. It is deliberately not gated on anything
+    // the client said: the preview is a courtesy to the submitter, but a
+    // client-side check is not a safety net, so the server re-checks the text it
+    // was actually handed. A client that skipped the preview, ignored it, or
+    // raced it is irrelevant. `masked` covers names and email addresses, so
+    // neither can be silently altered. The match lists are used only to set the
+    // flag below — never stored, never logged, never returned.
+    const titleResult = redactNames(trimmedTitle);
+    const descriptionResult = redactNames(trimmedDescription);
+    const redacted = titleResult.masked || descriptionResult.masked;
 
     // A token is generated for every submission, anonymous or not. It is the
     // only link between a submission and the identity_map row that may hold a
@@ -117,8 +241,8 @@ app.post('/submissions', (req, res) => {
     const create = db.transaction(() => {
       const info = insert.run(
         submission_type,
-        trimmedTitle,
-        trimmedDescription,
+        titleResult.redactedText,
+        descriptionResult.redactedText,
         category_id || null,
         department_id || null,
         location || null,
@@ -158,7 +282,15 @@ app.post('/submissions', (req, res) => {
     // created the submission. It is their handle for tracking their own
     // submission without an account, which is why it is not also published by
     // the listing or the status response.
-    res.status(201).json({ id, message: "Submission successful", submission_token: submissionToken });
+    //
+    // `redacted` tells the submitter the server changed their words on the way
+    // in. They are told what was stored, so it can never be a silent edit.
+    res.status(201).json({
+      id,
+      message: "Submission successful",
+      submission_token: submissionToken,
+      redacted,
+    });
   } catch (error) {
     if (error instanceof RequestError) {
       return res.status(error.status).json({ error: error.message });
@@ -168,8 +300,98 @@ app.post('/submissions', (req, res) => {
   }
 });
 
+// --- Staff authentication -------------------------------------------------
+//
+// Deliberately not linked from the Submit/Browse/Track navigation: a student
+// should never be nudged to log in, and the only reason to hold a staff session
+// is to triage someone else's complaint.
+
+// Staff sign-in.
+//
+// One generic 401 covers every failure mode — unknown email, no password set,
+// wrong password, and a seeded student who is not staff. Distinguishing them
+// would turn this form into a lookup table of registered staff addresses.
+app.post('/staff/login', async (req, res) => {
+  const { email, password } = req.body ?? {};
+
+  try {
+    const account = auth.verifyCredentials(email, password);
+
+    if (!account) {
+      return res.status(401).json({ error: auth.INVALID_CREDENTIALS });
+    }
+
+    await auth.startSession(req, account);
+
+    // describeSession, not the raw account, so password_hash has no path to a
+    // response even if a future field is added to the account object.
+    res.json(auth.describeSession(req));
+  } catch (error) {
+    console.error('POST /staff/login failed:', error);
+    res.status(500).json({ error: 'Could not sign in right now.' });
+  }
+});
+
+app.post('/staff/logout', async (req, res) => {
+  try {
+    await auth.endSession(req);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('POST /staff/logout failed:', error);
+    res.status(500).json({ error: 'Could not sign out right now.' });
+  }
+});
+
+// What the current session can do. This is the endpoint the Browse view uses to
+// decide which action buttons to show, so a signed-out visitor gets
+// { role: null } and is shown nothing rather than a button that would 401.
+app.get('/staff/me', (req, res) => {
+  res.json(auth.describeSession(req));
+});
+
+// Gate for the status transition route.
+//
+// Runs before the handler, so an unauthenticated caller is answered 401
+// without ever learning whether their body was well-formed — validation
+// messages are a small but free source of information, and authentication is
+// supposed to come first.
+//
+// The role class is decided from the requested target status alone; the
+// department match additionally needs the submission's own department_id, so
+// that one row is read here. The handler re-reads the row inside its
+// transaction, which stays the authoritative copy — this read exists only to
+// answer the gate, and nothing is trusted from it afterwards.
+//
+// Malformed ids and missing submissions are passed through untouched: they are
+// the handler's 400 and 404, and deciding them here would either leak existence
+// or duplicate logic.
+function requireTransitionAccess(req, res, next) {
+  if (!auth.isAuthenticated(req)) {
+    return res.status(401).json({ error: 'Staff sign-in required.' });
+  }
+
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return next();
+
+  const targetStatus =
+    typeof req.body?.new_status === 'string' ? req.body.new_status.trim() : null;
+
+  const row = db
+    .prepare('SELECT department_id FROM submissions WHERE submission_id = ?')
+    .get(id);
+
+  if (!row) return next();
+
+  const verdict = auth.checkTransitionAccess(req.session, targetStatus, row.department_id);
+  if (!verdict.allowed) {
+    return res.status(verdict.status).json({ error: verdict.error });
+  }
+
+  next();
+}
+
 // Advance a submission to the next status in the workflow
-app.patch('/submissions/:id/status', (req, res) => {
+app.patch('/submissions/:id/status', requireTransitionAccess, (req, res) => {
   const { new_status, reason } = req.body ?? {};
   const id = Number(req.params.id);
   const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
@@ -228,12 +450,17 @@ app.patch('/submissions/:id/status', (req, res) => {
         WHERE submission_id = ?
       `).run(new_status, id);
 
-      // changed_by stays NULL because there is no authentication yet.
+      // changed_by is the staff account the gate already proved is authorised:
+      // requireTransitionAccess runs before this handler, so by the time we get
+      // here req.session.userId is a real, role-checked account. It is still not
+      // exposed by any response — the history projection selects only
+      // old_status/new_status/reason/changed_at — so this is an audit trail on
+      // disk, not a new privacy surface.
       db.prepare(`
         INSERT INTO status_history
           (submission_id, old_status, new_status, reason, changed_by)
-        VALUES (?, ?, ?, ?, NULL)
-      `).run(id, current.status, new_status, trimmedReason);
+        VALUES (?, ?, ?, ?, ?)
+      `).run(id, current.status, new_status, trimmedReason, req.session.userId);
 
       return db
         .prepare(`SELECT ${SUBMISSION_PUBLIC_COLUMNS} FROM submissions WHERE submission_id = ?`)
@@ -329,10 +556,21 @@ app.get('/submissions/token/:token', (req, res) => {
   }
 });
 
-// TEMPORARY — for local testing of the identity_map linkage only. This has zero
-// access control and must be gated behind RBAC before this goes anywhere near a
-// real deployment. Do not expose this route publicly.
-app.get('/submissions/:id/identity', (req, res) => {
+// Reveals the real person behind a submission. This is the most sensitive route
+// in the app: it walks identity_map and prints a name and an email address, so
+// it resolves an anonymous complaint to a human being.
+//
+// It used to carry no access control at all and a comment saying so. That is
+// now closed: requireRole('admin') makes an unauthenticated call 401 and any
+// non-admin staff role 403, checked before the id is even validated so an
+// outsider cannot map which ids exist.
+//
+// Admin-only rather than any staff, because the whole point of the identity
+// layer is that staff reading complaints do not learn who filed them. A
+// department staff member who could call this could re-identify every anonymous
+// grievance in their department, which defeats the anonymity guarantee the rest
+// of the codebase is built to preserve.
+app.get('/submissions/:id/identity', auth.requireRole(auth.ROLES.ADMIN), (req, res) => {
   const id = Number(req.params.id);
 
   try {

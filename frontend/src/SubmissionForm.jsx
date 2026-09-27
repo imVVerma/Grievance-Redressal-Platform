@@ -1,21 +1,5 @@
-import { useState } from "react";
-import { createSubmission, previewRedaction } from "./api";
-
-// Placeholder lists — once you build the /departments and /categories
-// endpoints (matching the schema's tables), fetch these instead of
-// hardcoding them.
-const DEPARTMENTS = [
-  { department_id: 1, name: "Hostel Maintenance" },
-  { department_id: 2, name: "Mess Committee" },
-  { department_id: 3, name: "Academic Office" },
-];
-
-const CATEGORIES = [
-  { category_id: 1, name: "Plumbing", submission_type: "request" },
-  { category_id: 2, name: "Electrical", submission_type: "request" },
-  { category_id: 3, name: "Mess Food Quality", submission_type: "complaint" },
-  { category_id: 4, name: "Administrative Coordination", submission_type: "complaint" },
-];
+import { useEffect, useState } from "react";
+import { createSubmission, fetchCategories, fetchDepartments, previewRedaction } from "./api";
 
 const initialForm = {
   submission_type: "request",
@@ -122,15 +106,77 @@ export default function SubmissionForm({ onSubmitted }) {
   // nothing has been submitted — the user still has the final say.
   const [preview, setPreview] = useState(null);
   const [checking, setChecking] = useState(false);
+  // Department and category options, from GET /departments and GET /categories.
+  // These used to be hardcoded arrays in this file, which meant adding a
+  // department was a code change and the form could disagree with the database.
+  // The server is the only place that knows the real list.
+  const [departments, setDepartments] = useState([]);
+  const [categories, setCategories] = useState([]);
+  // True until both requests settle, successfully or not. The selects are
+  // disabled meanwhile so nobody can pick from a list that is still empty and
+  // have their choice silently replaced a moment later.
+  const [optionsLoading, setOptionsLoading] = useState(true);
+  // Shown, never thrown, if the lookup fails. Both fields are optional, so a
+  // submitter who cannot reach this list can still file a grievance with a
+  // title and a description — losing the dropdowns is a worse outcome than
+  // losing the ability to submit at all.
+  const [optionsError, setOptionsError] = useState(null);
 
   const busy = submitting || checking;
 
-  const filteredCategories = CATEGORIES.filter(
+  useEffect(() => {
+    // Both requests are needed for the form to look complete, but neither is
+    // needed to submit, so they are awaited together and a failure in either
+    // one is contained rather than taking the other down with it.
+    let cancelled = false;
+    Promise.allSettled([fetchDepartments(), fetchCategories()]).then(
+      ([departmentsResult, categoriesResult]) => {
+        if (cancelled) return;
+        if (departmentsResult.status === "fulfilled") {
+          setDepartments(departmentsResult.value);
+        }
+        if (categoriesResult.status === "fulfilled") {
+          setCategories(categoriesResult.value);
+        }
+        const failed = [
+          departmentsResult.status === "rejected" && "departments",
+          categoriesResult.status === "rejected" && "categories",
+        ].filter(Boolean);
+        if (failed.length > 0) {
+          setOptionsError(
+            `Could not load ${failed.join(" and ")}. You can still submit — the fields below are optional.`
+          );
+        }
+        // Cleared whether it succeeded or failed, so the selects stop being
+        // disabled either way. On failure they are left enabled and empty, which
+        // is the degraded state this state machine is built around.
+        setOptionsLoading(false);
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Filtered client-side, exactly as before: switching submission_type on the
+  // form re-filters the categories already in hand instead of costing another
+  // round trip. A category that does not match the current type is cleared,
+  // otherwise the form would submit an id the visible list no longer offers.
+  const filteredCategories = categories.filter(
     (c) => c.submission_type === form.submission_type
   );
 
   function update(field, value) {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === "submission_type" && next.category_id !== "") {
+        const stillValid = categories.some(
+          (c) => String(c.category_id) === String(next.category_id) && c.submission_type === value
+        );
+        if (!stillValid) next.category_id = "";
+      }
+      return next;
+    });
   }
 
   async function handleCopy() {
@@ -288,6 +334,7 @@ export default function SubmissionForm({ onSubmitted }) {
         <select
           value={form.category_id}
           onChange={(e) => update("category_id", e.target.value)}
+          disabled={optionsLoading}
         >
           <option value="">Not sure / general</option>
           {filteredCategories.map((c) => (
@@ -296,6 +343,7 @@ export default function SubmissionForm({ onSubmitted }) {
             </option>
           ))}
         </select>
+        {optionsLoading && <span className="field-hint">Loading options…</span>}
       </label>
 
       <label className="field">
@@ -303,15 +351,18 @@ export default function SubmissionForm({ onSubmitted }) {
         <select
           value={form.department_id}
           onChange={(e) => update("department_id", e.target.value)}
+          disabled={optionsLoading}
         >
           <option value="">Route for me</option>
-          {DEPARTMENTS.map((d) => (
+          {departments.map((d) => (
             <option key={d.department_id} value={d.department_id}>
               {d.name}
             </option>
           ))}
         </select>
       </label>
+
+      {optionsError && <p className="form-hint">{optionsError}</p>}
 
       <label className="checkbox-field">
         <input
