@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto');
 const db = require('./db');
 
 const app = express();
@@ -38,10 +39,31 @@ class RequestError extends Error {
 
 const badRequest = (message) => new RequestError(400, message);
 
+// A random, unguessable handle for a submission. 16 bytes = 128 bits, so the
+// token cannot be guessed or enumerated by anyone who has seen another one.
+function generateToken() {
+  return crypto.randomBytes(16).toString('hex');
+}
+
+// The public shape of a submission, enumerated rather than SELECT *.
+//
+// submission_token is deliberately excluded: it is the only key to the
+// identity_map linkage, and these two responses are unauthenticated, so a
+// SELECT * here would publish the anonymity key of every submission in the
+// system. The token is handed to a submitter once, in the POST response.
+//
+// Defined once so the listing and the status response cannot drift apart.
+const SUBMISSION_PUBLIC_COLUMNS = `
+  submission_id, submission_type, title, description, category_id,
+  department_id, submitted_by, status, location, is_anonymous,
+  created_at, updated_at`;
+
 // Get all submissions
 app.get('/submissions', (req, res) => {
   try {
-    const submissions = db.prepare('SELECT * FROM submissions ORDER BY created_at DESC').all();
+    const submissions = db
+      .prepare(`SELECT ${SUBMISSION_PUBLIC_COLUMNS} FROM submissions ORDER BY created_at DESC`)
+      .all();
     res.json(submissions);
   } catch (error) {
     console.error('GET /submissions failed:', error);
@@ -51,7 +73,7 @@ app.get('/submissions', (req, res) => {
 
 // Create a new submission
 app.post('/submissions', (req, res) => {
-  const { submission_type, title, description, category_id, department_id, location, is_anonymous } = req.body ?? {};
+  const { submission_type, title, description, category_id, department_id, location, is_anonymous, user_email } = req.body ?? {};
 
   try {
     const trimmedTitle = typeof title === 'string' ? title.trim() : '';
@@ -67,16 +89,26 @@ app.post('/submissions', (req, res) => {
       throw badRequest('description is required.');
     }
 
+    // A token is generated for every submission, anonymous or not. It is the
+    // only link between a submission and the identity_map row that may hold a
+    // real person, so it must be unguessable and must always exist.
+    const submissionToken = generateToken();
+
+    // submitted_by is intentionally never written. Identity belongs in
+    // identity_map, keyed by the token, not on the submission record itself.
     const insert = db.prepare(`
       INSERT INTO submissions 
-      (submission_type, title, description, category_id, department_id, location, is_anonymous) 
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      (submission_type, title, description, category_id, department_id, location, is_anonymous, submission_token) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     // Convert boolean to integer for SQLite
     const anonymousFlag = is_anonymous ? 1 : 0;
 
-    // The submission row and its opening history row must both land, or neither.
+    const findUserByEmail = db.prepare('SELECT user_id FROM users WHERE email = ?');
+
+    // The submission row, its opening history row and any identity_map row must
+    // all land, or none of them do.
     const create = db.transaction(() => {
       const info = insert.run(
         submission_type,
@@ -85,7 +117,8 @@ app.post('/submissions', (req, res) => {
         category_id || null,
         department_id || null,
         location || null,
-        anonymousFlag
+        anonymousFlag,
+        submissionToken
       );
 
       // Log the initial status in history
@@ -94,10 +127,33 @@ app.post('/submissions', (req, res) => {
         VALUES (?, 'submitted', 'Initial submission via API')
       `).run(info.lastInsertRowid);
 
+      // Optional identity capture, written here and nowhere else. No row in
+      // identity_map means no identity was ever captured for this submission —
+      // the strongest anonymity case, and what every anonymous submission gets.
+      //
+      // A user_email that matches no seeded user is ignored rather than
+      // rejected: this is a testing-phase convenience, not authentication, so a
+      // bad address must never be able to block a submission.
+      if (typeof user_email === 'string' && user_email.trim() !== '') {
+        const user = findUserByEmail.get(user_email.trim());
+        if (user) {
+          db.prepare(`
+            INSERT INTO identity_map (submission_token, user_id)
+            VALUES (?, ?)
+          `).run(submissionToken, user.user_id);
+        }
+      }
+
       return info.lastInsertRowid;
     });
 
-    res.status(201).json({ id: create(), message: "Submission successful" });
+    const id = create();
+
+    // The token is released exactly once, here, to the submitter who just
+    // created the submission. It is their handle for tracking their own
+    // submission without an account, which is why it is not also published by
+    // the listing or the status response.
+    res.status(201).json({ id, message: "Submission successful", submission_token: submissionToken });
   } catch (error) {
     if (error instanceof RequestError) {
       return res.status(error.status).json({ error: error.message });
@@ -175,7 +231,7 @@ app.patch('/submissions/:id/status', (req, res) => {
       `).run(id, current.status, new_status, trimmedReason);
 
       return db
-        .prepare('SELECT * FROM submissions WHERE submission_id = ?')
+        .prepare(`SELECT ${SUBMISSION_PUBLIC_COLUMNS} FROM submissions WHERE submission_id = ?`)
         .get(id);
     });
 
@@ -186,6 +242,52 @@ app.patch('/submissions/:id/status', (req, res) => {
     }
     console.error(`PATCH /submissions/${req.params.id}/status failed:`, error);
     res.status(500).json({ error: 'Could not update the submission status.' });
+  }
+});
+
+// TEMPORARY — for local testing of the identity_map linkage only. This has zero
+// access control and must be gated behind RBAC before this goes anywhere near a
+// real deployment. Do not expose this route publicly.
+app.get('/submissions/:id/identity', (req, res) => {
+  const id = Number(req.params.id);
+
+  try {
+    if (!Number.isInteger(id) || id <= 0) {
+      throw badRequest('Submission id must be a positive integer.');
+    }
+
+    const row = db
+      .prepare('SELECT submission_token FROM submissions WHERE submission_id = ?')
+      .get(id);
+
+    if (!row) {
+      throw new RequestError(404, `No submission found with id ${id}.`);
+    }
+
+    if (!row.submission_token) {
+      return res.json({ identified: false });
+    }
+
+    const match = db
+      .prepare(`
+        SELECT u.email, u.name
+        FROM identity_map m
+        JOIN users u ON u.user_id = m.user_id
+        WHERE m.submission_token = ?
+      `)
+      .get(row.submission_token);
+
+    if (!match) {
+      return res.json({ identified: false });
+    }
+
+    res.json({ identified: true, email: match.email, name: match.name });
+  } catch (error) {
+    if (error instanceof RequestError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+    console.error(`GET /submissions/${req.params.id}/identity failed:`, error);
+    res.status(500).json({ error: 'Could not look up the submission identity.' });
   }
 });
 
