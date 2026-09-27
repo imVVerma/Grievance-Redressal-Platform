@@ -1,6 +1,3 @@
-Here is an improved, highly polished, and cleanly structured version of your `README.md` file optimized for readability and visual appeal on GitHub:
-
-```markdown
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
 [![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -54,41 +51,28 @@ To run this project locally, ensure you have the following installed on your mac
    ```bash
    git clone [https://github.com/your-username/university-complaint-platform.git](https://github.com/your-username/university-complaint-platform.git)
    cd university-complaint-platform
+Install backend dependencies:
 
-```
-
-2. **Install backend dependencies:**
-```bash
+Bash
 cd backend
 npm install
+Install frontend dependencies:
 
-```
-
-
-3. **Install frontend dependencies:**
-```bash
+Bash
 cd ../frontend
 npm install
+Initialize and run the application:
 
-```
+Start the backend server:
 
-
-4. **Initialize and run the application:**
-* **Start the backend server:**
-```bash
+Bash
 cd backend
 npm run dev
+In a separate terminal, start the frontend client:
 
-```
-
-
-* **In a separate terminal, start the frontend client:**
-```bash
+Bash
 cd frontend
 npm run dev
-
-```
-
 
 
 
