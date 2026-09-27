@@ -93,6 +93,17 @@
   box-shadow: var(--accent-shadow);
 }
 
+/* Holds the tab bar and the staff-session indicator as a single right-aligned
+   column, so the indicator can sit under the tabs without either of them
+   needing to know about the other's layout. */
+.app-header-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
 /* --- Form shell ---------------------------------------------------------- */
 
 .submission-form {
@@ -231,6 +242,28 @@
 .field select option {
   background: var(--bg-color);
   color: var(--text-main);
+}
+
+/* A select whose options have not arrived yet. Dimmed rather than hidden, so
+   the form keeps its shape and nothing reflows once the list lands. */
+.field select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.field-hint {
+  margin-top: 6px;
+  font-size: 0.8rem;
+  color: var(--text-faint);
+}
+
+/* Non-blocking notice: the form still works, so this is styled as information
+   rather than as the red error the submission path uses. */
+.form-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--text-muted);
 }
 
 .checkbox-field {
@@ -528,6 +561,84 @@
   box-shadow: var(--accent-shadow-hover);
 }
 
+/* --- Triage bounce-back (routing actions) ---------------------------------- */
+
+/* Shares the status row's shape so the two read as the same kind of control,
+   with a different border colour: routing is not a status advance, and the
+   divider is the only place the two appear together on one row. */
+.routing-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--glass-border);
+}
+
+.routing-action-row.reassign {
+  border-top-color: rgba(180, 83, 9, 0.35);
+}
+
+.routing-department-select {
+  flex: 0 1 220px;
+  min-height: 42px;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  color: var(--text-main);
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+}
+
+.routing-department-select:focus {
+  outline: none;
+  border-color: var(--secondary);
+  box-shadow: var(--focus-ring);
+}
+
+.routing-department-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.routing-department-select option {
+  background: var(--bg-color);
+  color: var(--text-main);
+}
+
+/* Amber, not the teal accent gradient: this is a decline/route hand-off, and
+   reusing the primary action colour would make it look like the status advance
+   sitting right next to it. */
+.routing-action {
+  flex-shrink: 0;
+  min-height: 42px;
+  padding: 0 18px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  font-weight: 500;
+  color: #fbbf24;
+  cursor: pointer;
+  background: rgba(180, 83, 9, 0.16);
+  border: 1px solid rgba(180, 83, 9, 0.45);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition), border-color var(--transition),
+    transform var(--transition);
+}
+
+.routing-action:hover:not([disabled]) {
+  background: rgba(180, 83, 9, 0.26);
+  border-color: rgba(251, 191, 36, 0.6);
+  transform: translateY(-1px);
+}
+
+.routing-action:disabled {
+  opacity: 0.55;
+  cursor: default;
+  transform: none;
+}
+
 /* --- Token receipt ------------------------------------------------------- */
 
 .token-receipt {
@@ -746,6 +857,36 @@
   color: var(--text-faint);
 }
 
+/* A reassignment is a different kind of event from a status change, so it gets
+   its own marker and colour on the same timeline. Amber rather than the status
+   teal: routing moved, the grievance did not progress, and a dot that looked
+   like a status advance would misread as one. */
+.timeline-entry.reassignment {
+  border-left-color: rgba(180, 83, 9, 0.5);
+}
+
+.timeline-entry.reassignment::before {
+  background: #b45309;
+  box-shadow: 0 0 0 3px rgba(180, 83, 9, 0.2);
+}
+
+.timeline-reassign-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fbbf24;
+  padding: 3px 8px;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: var(--radius-sm);
+  background: rgba(180, 83, 9, 0.14);
+}
+
+.timeline-departments {
+  font-size: 0.9rem;
+  color: var(--text-main);
+}
+
 /* --- Redaction preview --------------------------------------------------- */
 
 /* The attention surface stays amber — it is a warning, not an error — but it
@@ -853,6 +994,96 @@
   border-color: rgba(0, 160, 180, 0.4);
 }
 
+/* --- Staff sign-in (/staff/login) ---------------------------------------- */
+
+.staff-login {
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+.staff-session {
+  padding: 18px 20px;
+  border: 1px solid rgba(16, 185, 129, 0.32);
+  border-radius: var(--radius-sm);
+  background: rgba(16, 185, 129, 0.09);
+}
+
+.staff-session-line {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #6ee7b7;
+}
+
+.staff-session-note {
+  margin: 0 0 14px;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.staff-session-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* --- Staff session indicator (header, all views) --------------------------- */
+
+/* Deliberately quiet: the sign-in state is useful context, not the thing the
+   student came to this page to do. It only appears when a session exists, so
+   signed-out users see the header exactly as they always have. */
+.staff-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid rgba(16, 185, 129, 0.32);
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.09);
+}
+
+.staff-indicator-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.staff-indicator-label strong {
+  color: #6ee7b7;
+  font-weight: 600;
+}
+
+.staff-indicator-dept {
+  color: var(--text-muted);
+}
+
+.staff-indicator-logout {
+  border: 1px solid rgba(16, 185, 129, 0.32);
+  background: rgba(0, 0, 0, 0.2);
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  font-family: inherit;
+  font-weight: 500;
+  color: #6ee7b7;
+  cursor: pointer;
+  border-radius: 999px;
+  white-space: nowrap;
+  transition: background var(--transition), color var(--transition),
+    border-color var(--transition), opacity var(--transition);
+}
+
+.staff-indicator-logout:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #a7f3d0;
+}
+
+.staff-indicator-logout:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 /* --- Responsive ---------------------------------------------------------- */
 
 @media (max-width: 720px) {
@@ -871,6 +1102,17 @@
   .app-header nav button {
     flex: 1;
     padding: 10px 12px;
+  }
+
+  /* Stack the indicator under the tabs and let it span the width, so the role
+     name is not squeezed into an ellipsis on a phone. */
+  .app-header-controls {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .staff-indicator {
+    justify-content: space-between;
   }
 
   .submission-form {

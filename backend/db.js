@@ -65,6 +65,30 @@ CREATE TABLE IF NOT EXISTS status_history (
     FOREIGN KEY (changed_by) REFERENCES users(user_id) ON DELETE SET NULL ON UPDATE CASCADE
 );
 
+-- Triage bounce-back audit trail: a department returning a submission to triage
+-- (new_department_id NULL) and triage/admin then routing it to a real department.
+--
+-- Deliberately a separate table from status_history. Reassigning a submission is
+-- not a status transition -- it leaves the status column untouched and does not
+-- move the submission along the workflow -- so folding these rows into
+-- status_history would put entries with no old_status/new_status into the same
+-- ordered timeline that the status state machine reads, and every consumer of
+-- that table (including the nextStatus sequence) would then have to know to
+-- ignore them.
+CREATE TABLE IF NOT EXISTS reassignment_history (
+    history_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    submission_id       INTEGER NOT NULL,
+    old_department_id   INTEGER,
+    new_department_id   INTEGER,
+    reason              TEXT NOT NULL,
+    changed_by          INTEGER,
+    changed_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (submission_id) REFERENCES submissions(submission_id) ON DELETE CASCADE,
+    FOREIGN KEY (old_department_id) REFERENCES departments(department_id),
+    FOREIGN KEY (new_department_id) REFERENCES departments(department_id),
+    FOREIGN KEY (changed_by) REFERENCES users(user_id)
+);
+
 -- Insert dummy data if empty so the API has something to query
 INSERT OR IGNORE INTO departments (department_id, name, description) VALUES 
 (1, 'Hostel Maintenance', 'Handles repairs and infrastructure issues in hostels'),
@@ -103,6 +127,44 @@ db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_submissions_submission_token
   ON submissions(submission_token);
 `);
+
+// --- Staff accounts -------------------------------------------------------
+// Role-based access control, added as nullable columns on `users` rather than a
+// new table, so a student identity and a staff identity are the same row and
+// there is no second kind of account to keep in sync.
+//
+// Idempotent, same discipline as the submission_token column above: every
+// column is only added if PRAGMA table_info says it is not already there, so
+// this is safe on every boot and on a database created before RBAC existed.
+//
+// All three stay NULLABLE, and that is the load-bearing detail:
+//
+//   * NULL role means "an ordinary seeded student identity". Those rows behave
+//     exactly as they did before this change — they can never authenticate as
+//     staff, because authentication requires a non-NULL role, and a submission
+//     carrying a student email is unaffected. Adding columns therefore cannot
+//     retroactively grant anybody access.
+//   * NULL department_id means "not tied to a department" (triage, council and
+//     admin, which act across departments).
+//
+// SQLite permits ADD COLUMN with a CHECK or REFERENCES clause as long as the
+// column is nullable, which is exactly the case here. The CHECK is what makes
+// `role` a closed vocabulary at the storage layer rather than only in code.
+const userColumns = new Set(
+  db.prepare('PRAGMA table_info(users)').all().map((column) => column.name)
+);
+
+const STAFF_COLUMNS = [
+  ['password_hash', 'TEXT'],
+  ['role', "TEXT CHECK (role IN ('department_staff','triage','council','admin'))"],
+  ['department_id', 'INTEGER REFERENCES departments(department_id)'],
+];
+
+for (const [name, definition] of STAFF_COLUMNS) {
+  if (!userColumns.has(name)) {
+    db.exec(`ALTER TABLE users ADD COLUMN ${name} ${definition}`);
+  }
+}
 
 // Backfill a token for any row that predates the column, so the "every
 // submission has a token" invariant holds. Safe to re-run: it only touches rows

@@ -479,6 +479,211 @@ app.patch('/submissions/:id/status', requireTransitionAccess, (req, res) => {
   }
 });
 
+// --- Triage bounce-back -----------------------------------------------------
+//
+// Two halves of one workflow, with no single role able to perform both:
+//
+//   department bounces (submission -> unassigned) -> triage/admin reassigns
+//
+// Splitting it that way is the whole point. A department declining work is a
+// departmental judgement, and routing the work is a triage judgement, so neither
+// is left to the other. The gates below encode that; see BOUNCING_ROLES and
+// REASSIGNING_ROLES in auth.js.
+//
+// Mirrors requireTransitionAccess: the gate reads the row to answer the
+// permission question, and the handler re-reads it inside its own transaction
+// and trusts only that copy.
+
+function requireBounceAccess(req, res, next) {
+  if (!auth.isAuthenticated(req)) {
+    return res.status(401).json({ error: 'Staff sign-in required.' });
+  }
+
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return next();
+
+  const row = db
+    .prepare('SELECT department_id FROM submissions WHERE submission_id = ?')
+    .get(id);
+
+  if (!row) return next();
+
+  const verdict = auth.checkBounceAccess(req.session, row.department_id);
+  if (!verdict.allowed) {
+    return res.status(verdict.status).json({ error: verdict.error });
+  }
+
+  next();
+}
+
+function requireReassignAccess(req, res, next) {
+  const verdict = auth.checkReassignAccess(req.session);
+  if (!verdict.allowed) {
+    return res.status(verdict.status).json({ error: verdict.error });
+  }
+  next();
+}
+
+// Return a submission to triage.
+//
+// The department is cleared rather than set to some "triage" sentinel, because
+// NULL is already the "nobody owns this" state the rest of the app understands —
+// triage's queue is exactly "department_id IS NULL", and no department is a real
+// id the way a routing table entry is.
+app.post('/submissions/:id/bounce', requireBounceAccess, (req, res) => {
+  const { reason } = req.body ?? {};
+  const id = Number(req.params.id);
+  const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
+
+  try {
+    if (!Number.isInteger(id) || id <= 0) {
+      throw badRequest('Submission id must be a positive integer.');
+    }
+    // Same reason contract as a status change: something has to be on the record
+    // saying why this left the department.
+    if (!trimmedReason) {
+      throw badRequest('A reason is required to return a submission to triage.');
+    }
+    if (trimmedReason.length > MAX_REASON_LENGTH) {
+      throw badRequest(`Reason must be ${MAX_REASON_LENGTH} characters or fewer.`);
+    }
+
+    const bounce = db.transaction(() => {
+      const current = db
+        .prepare('SELECT submission_id, department_id FROM submissions WHERE submission_id = ?')
+        .get(id);
+
+      if (!current) {
+        throw new RequestError(404, `No submission found with id ${id}.`);
+      }
+
+      // Re-check the permission inside the transaction, not just at the gate.
+      // Here the row's own department_id *is* the authorisation input, so a
+      // read taken before the transaction could be stale by the time it is
+      // acted on. The status route gets away without this because its gate
+      // depends only on the session; this one would not.
+      const verdict = auth.checkBounceAccess(req.session, current.department_id);
+      if (!verdict.allowed) {
+        throw new RequestError(verdict.status, verdict.error);
+      }
+
+      // "Nothing to bounce from" is a client-side mistake, not a permission
+      // problem, so it is a 400 and not a 403.
+      if (current.department_id == null) {
+        throw badRequest(
+          `Submission ${id} is not assigned to a department, so there is nothing to return to triage.`
+        );
+      }
+
+      db.prepare(`
+        UPDATE submissions
+        SET department_id = NULL, updated_at = CURRENT_TIMESTAMP
+        WHERE submission_id = ?
+      `).run(id);
+
+      db.prepare(`
+        INSERT INTO reassignment_history
+          (submission_id, old_department_id, new_department_id, reason, changed_by)
+        VALUES (?, ?, NULL, ?, ?)
+      `).run(id, current.department_id, trimmedReason, req.session.userId);
+
+      return db
+        .prepare(`SELECT ${SUBMISSION_PUBLIC_COLUMNS} FROM submissions WHERE submission_id = ?`)
+        .get(id);
+    });
+
+    // Bucketed like every other timestamp, for the same reason: when a
+    // submission was bounced is as identifying as when it was filed.
+    res.json(presentSubmission(bounce()));
+  } catch (error) {
+    if (error instanceof RequestError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+    console.error(`POST /submissions/${req.params.id}/bounce failed:`, error);
+    res.status(500).json({ error: 'Could not return the submission to triage.' });
+  }
+});
+
+// Route an unassigned submission to a department.
+app.post('/submissions/:id/reassign', requireReassignAccess, (req, res) => {
+  const { department_id, reason } = req.body ?? {};
+  const id = Number(req.params.id);
+  const trimmedReason = typeof reason === 'string' ? reason.trim() : '';
+
+  try {
+    if (!Number.isInteger(id) || id <= 0) {
+      throw badRequest('Submission id must be a positive integer.');
+    }
+    if (!trimmedReason) {
+      throw badRequest('A reason is required to assign a submission to a department.');
+    }
+    if (trimmedReason.length > MAX_REASON_LENGTH) {
+      throw badRequest(`Reason must be ${MAX_REASON_LENGTH} characters or fewer.`);
+    }
+
+    // department_id must name a row that exists. A select cannot be assigned to
+    // a department id the routing table has never heard of, and letting an
+    // unknown id through would fail later as a foreign-key error with a much
+    // less useful message.
+    if (department_id === undefined || department_id === null || department_id === '') {
+      throw badRequest('department_id is required.');
+    }
+    const targetDepartmentId = Number(department_id);
+    if (!Number.isInteger(targetDepartmentId) || targetDepartmentId <= 0) {
+      throw badRequest('department_id must be a positive integer.');
+    }
+    if (!db.prepare('SELECT department_id FROM departments WHERE department_id = ?').get(targetDepartmentId)) {
+      throw badRequest(`No department found with id ${targetDepartmentId}.`);
+    }
+
+    const reassign = db.transaction(() => {
+      const current = db
+        .prepare('SELECT submission_id, department_id FROM submissions WHERE submission_id = ?')
+        .get(id);
+
+      if (!current) {
+        throw new RequestError(404, `No submission found with id ${id}.`);
+      }
+
+      // Refuse to move an already-routed submission. Letting triage silently
+      // reassign work that a department is holding would short-circuit the
+      // bounce handshake and make the reassignment trail lie: the row would
+      // claim an old_department_id of NULL for a submission that was never
+      // unassigned. If triage really needs to move assigned work, that is a
+      // separate, explicitly-scoped feature rather than an implied one.
+      if (current.department_id != null) {
+        throw badRequest(
+          `Submission ${id} is already assigned to a department. It has to be returned to triage first.`
+        );
+      }
+
+      db.prepare(`
+        UPDATE submissions
+        SET department_id = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE submission_id = ?
+      `).run(targetDepartmentId, id);
+
+      db.prepare(`
+        INSERT INTO reassignment_history
+          (submission_id, old_department_id, new_department_id, reason, changed_by)
+        VALUES (?, NULL, ?, ?, ?)
+      `).run(id, targetDepartmentId, trimmedReason, req.session.userId);
+
+      return db
+        .prepare(`SELECT ${SUBMISSION_PUBLIC_COLUMNS} FROM submissions WHERE submission_id = ?`)
+        .get(id);
+    });
+
+    res.json(presentSubmission(reassign()));
+  } catch (error) {
+    if (error instanceof RequestError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+    console.error(`POST /submissions/${req.params.id}/reassign failed:`, error);
+    res.status(500).json({ error: 'Could not assign the submission to a department.' });
+  }
+});
+
 // Look up one submission by the token issued at creation time — the accountless
 // way for a submitter to follow their own grievance to resolution.
 //
@@ -531,18 +736,83 @@ app.get('/submissions/token/:token', (req, res) => {
     }
 
     const submission = presentSubmission(row);
+    const submissionId = submission.submission_id;
 
-    // changed_at has one-second resolution, so entries written in the same
-    // second would otherwise come back in arbitrary order. history_id is
-    // monotonic, which makes the timeline strictly oldest-first.
-    const history = db
+    // Two histories, merged into one timeline.
+    //
+    // Each table is ordered by (changed_at, history_id) in its own SQL, exactly
+    // as before. history_id is monotonic *within a table*, which is all it was
+    // ever relied on for: it breaks ties between rows written in the same
+    // second, and both tables have second-resolution CURRENT_TIMESTAMP.
+    //
+    // Across the two tables the existing tiebreaker does not carry over, and the
+    // choice here is deliberate rather than an oversight. Each table numbers
+    // from 1 independently, so a status row with history_id 5 and a
+    // reassignment row with history_id 2 carry no relative ordering at all --
+    // comparing them would be comparing unrelated counters and would silently
+    // invent an order. The two writes are also separate transactions, so when
+    // they land in the same second the true order is not recoverable from the
+    // data at all: nothing recorded it.
+    //
+    // So the merge sorts on changed_at alone and leans on Array#sort being
+    // stable (guaranteed since ES2019): the concatenated array puts status
+    // entries first, so same-second ties come back status-before-reassignment,
+    // deterministically, while each table's own history_id order is preserved
+    // untouched. The guarantee that matters is not "the true order" but "the
+    // same order every time" -- an unstable or arbitrary order would make the
+    // timeline flicker between two calls for the same data.
+    //
+    // Sorting happens on the *raw* timestamps, before anonymity bucketing below,
+    // for the same reason the status query sorts in SQL: bucketing first would
+    // collapse a run of distinct seconds onto one hour label and destroy the
+    // ordering it is supposed to be reporting.
+    const statusEntries = db
       .prepare(`
         SELECT old_status, new_status, reason, changed_at
         FROM status_history
         WHERE submission_id = ?
         ORDER BY changed_at ASC, history_id ASC
       `)
-      .all(submission.submission_id);
+      .all(submissionId)
+      .map((entry) => ({ ...entry, type: 'status' }));
+
+    // Department ids are resolved to names here rather than in the client, and
+    // NULL is rendered as "Unassigned" rather than sent as a null the UI would
+    // have to recognise. The token holder is a student following their own
+    // grievance and has no business reading numeric routing ids, and a
+    // department that was later deleted would otherwise show as a bare number
+    // that means nothing.
+    const reassignmentEntries = db
+      .prepare(`
+        SELECT
+          r.old_department_id,
+          r.new_department_id,
+          r.reason,
+          r.changed_at,
+          old_department.name AS old_department_name,
+          new_department.name AS new_department_name
+        FROM reassignment_history AS r
+        LEFT JOIN departments AS old_department
+          ON old_department.department_id = r.old_department_id
+        LEFT JOIN departments AS new_department
+          ON new_department.department_id = r.new_department_id
+        WHERE r.submission_id = ?
+        ORDER BY r.changed_at ASC, r.history_id ASC
+      `)
+      .all(submissionId)
+      .map((entry) => ({
+        type: 'reassignment',
+        reason: entry.reason,
+        changed_at: entry.changed_at,
+        old_department:
+          entry.old_department_id == null ? 'Unassigned' : entry.old_department_name ?? 'Unassigned',
+        new_department:
+          entry.new_department_id == null ? 'Unassigned' : entry.new_department_name ?? 'Unassigned',
+      }));
+
+    const history = [...statusEntries, ...reassignmentEntries].sort((a, b) =>
+      a.changed_at < b.changed_at ? -1 : a.changed_at > b.changed_at ? 1 : 0
+    );
 
     // A history row inherits the parent submission's anonymity, so an anonymous
     // submission's timeline is bucketed to the hour as well.

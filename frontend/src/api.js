@@ -85,6 +85,32 @@ export async function updateSubmissionStatus(id, newStatus, reason) {
   return res.json();
 }
 
+// Triage bounce-back, the two halves of the handshake. Both are POSTs rather
+// than a PATCH because both change routing rather than workflow state, and
+// keeping them off the /status path means the status state machine cannot be
+// reached by a request that never went through its own gate.
+export async function bounceSubmission(id, reason) {
+  const res = await fetch(`${BASE_URL}/submissions/${id}/bounce`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+    ...WITH_CREDENTIALS,
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, "Failed to return it to triage"));
+  return res.json();
+}
+
+export async function reassignSubmission(id, departmentId, reason) {
+  const res = await fetch(`${BASE_URL}/submissions/${id}/reassign`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ department_id: departmentId, reason }),
+    ...WITH_CREDENTIALS,
+  });
+  if (!res.ok) throw new Error(await errorMessage(res, "Failed to assign a department"));
+  return res.json();
+}
+
 // The status code rides along on the thrown error so the Track view can tell
 // "no submission has that code" apart from a genuine server or network problem.
 export async function lookupSubmissionByToken(token) {

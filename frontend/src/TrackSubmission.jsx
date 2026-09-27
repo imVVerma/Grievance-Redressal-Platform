@@ -2,6 +2,7 @@ import { useState } from "react";
 import { lookupSubmissionByToken } from "./api";
 import StatusBadge from "./StatusBadge";
 import { labelForStatus } from "./statuses";
+import { formatTimestamp } from "./datetime";
 
 // The submitted code, pasted back in. Kept in a plain uncontrolled-ish input
 // because the value is a 32-character opaque string the user copies from
@@ -26,30 +27,57 @@ export function TrackResult({ submission }) {
 
       <div className="list-item-meta">
         <span>{submission.submission_type === "request" ? "Request" : "Complaint"}</span>
-        <span>Submitted {new Date(submission.created_at).toLocaleString()}</span>
+        <span>Submitted {formatTimestamp(submission.created_at)}</span>
       </div>
 
       <h3 className="track-timeline-heading">Progress</h3>
       {history.length === 0 ? (
         <p className="empty-state">No status history recorded yet.</p>
       ) : (
-        // Oldest first — the server already orders the history, and the copy
-        // here just makes that guarantee visible at the point of use.
+        // Oldest first — the server already orders the merged status +
+        // reassignment timeline, and the copy here just makes that guarantee
+        // visible at the point of use.
+        //
+        // An entry with no `type` is treated as a status change. That is not
+        // defensive padding: the field is new, and a token lookup answered by an
+        // older build (or a cached response) would send entries without it.
+        // Defaulting keeps those rendering as they always did instead of
+        // showing an empty row.
         <ol className="timeline">
-          {history.map((entry, index) => (
-            <li key={`${entry.changed_at}-${index}`} className="timeline-entry">
-              <div className="timeline-entry-head">
-                <StatusBadge status={entry.new_status} />
-                {entry.old_status && (
-                  <span className="timeline-from">from {labelForStatus(entry.old_status)}</span>
-                )}
-              </div>
-              {entry.reason && <p className="timeline-reason">{entry.reason}</p>}
-              <span className="timeline-time">
-                {new Date(entry.changed_at).toLocaleString()}
-              </span>
-            </li>
-          ))}
+          {history.map((entry, index) => {
+            const isReassignment = entry.type === "reassignment";
+            return (
+              <li
+                key={`${entry.changed_at}-${entry.type ?? "status"}-${index}`}
+                className={`timeline-entry ${isReassignment ? "reassignment" : "status"}`}
+              >
+                <div className="timeline-entry-head">
+                  {isReassignment ? (
+                    <>
+                      <span className="timeline-reassign-label">Reassigned</span>
+                      <span className="timeline-departments">
+                        {entry.old_department} <span aria-hidden="true">→</span>{" "}
+                        {entry.new_department}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <StatusBadge status={entry.new_status} />
+                      {entry.old_status && (
+                        <span className="timeline-from">
+                          from {labelForStatus(entry.old_status)}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+                {entry.reason && <p className="timeline-reason">{entry.reason}</p>}
+                <span className="timeline-time">
+                  {formatTimestamp(entry.changed_at)}
+                </span>
+              </li>
+            );
+          })}
         </ol>
       )}
     </div>

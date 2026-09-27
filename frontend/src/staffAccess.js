@@ -42,6 +42,12 @@ export function roleLabel(role) {
 const CLOSING_ROLES = [ROLES.COUNCIL, ROLES.ADMIN];
 const ADVANCING_ROLES = [ROLES.DEPARTMENT_STAFF, ROLES.ADMIN];
 
+// Triage bounce-back, mirroring BOUNCING_ROLES and REASSIGNING_ROLES in
+// backend/auth.js. The two lists do not overlap, so no single role can both
+// bounce a submission and route it on.
+const BOUNCING_ROLES = [ROLES.DEPARTMENT_STAFF, ROLES.ADMIN];
+const REASSIGNING_ROLES = [ROLES.TRIAGE, ROLES.ADMIN];
+
 // `staff` is the /staff/me payload: { role, department_id } or { role: null }.
 export function isSignedIn(staff) {
   return Boolean(staff && staff.role);
@@ -75,4 +81,46 @@ export function canAdvanceStatus(staff, submission, nextStatus) {
   if (staff.department_id == null || submission?.department_id == null) return false;
 
   return Number(staff.department_id) === Number(submission.department_id);
+}
+
+// Whether this staff member is offered "Not our department" on `submission`.
+//
+// Only the department currently holding the submission, which is the same
+// scoping rule as a status change — bouncing is a departmental judgement, so
+// the department that is being asked to do it has to be the one that currently
+// owns it. An unassigned submission is not offered: there is nothing to bounce
+// from, and triage's queue is the place that handles it.
+export function canBounce(staff, submission) {
+  if (!isSignedIn(staff)) return false;
+  if (!BOUNCING_ROLES.includes(staff.role)) return false;
+  // Checked before the admin exemption: an admin bouncing an unassigned row is
+  // rejected by the server, so offering it would be a button guaranteed to fail.
+  if (submission?.department_id == null) return false;
+  // Admins act across every department.
+  if (staff.role === ROLES.ADMIN) return true;
+  if (staff.department_id == null) return false;
+  return Number(staff.department_id) === Number(submission.department_id);
+}
+
+// Whether this staff member is offered the "assign a department" action on
+// `submission`.
+//
+// Triage or admin, and only on a submission with no department — the server
+// refuses to reassign an already-routed one, so offering the action there would
+// be a button whose click is guaranteed to be rejected. That makes this
+// function, over the existing public listing, the whole triage queue: no
+// separate dashboard needed.
+export function canReassign(staff, submission) {
+  if (!isSignedIn(staff)) return false;
+  if (!REASSIGNING_ROLES.includes(staff.role)) return false;
+  return submission?.department_id == null;
+}
+
+// Whether this staff member could be shown the department picker at all,
+// regardless of what any individual row looks like. Used to decide whether it is
+// worth fetching the department list on mount, so a department_staff member
+// browsing a fully-routed queue never makes a request whose result they cannot
+// use.
+export function everReassigns(staff) {
+  return isSignedIn(staff) && REASSIGNING_ROLES.includes(staff.role);
 }
