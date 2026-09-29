@@ -2,8 +2,14 @@ const Database = require('better-sqlite3');
 const crypto = require('crypto');
 const path = require('path');
 
-// Initialize an SQLite database (it will be created automatically in this directory)
-const db = new Database(path.join(__dirname, 'gap.db'));
+// Initialize an SQLite database (it will be created automatically in this directory).
+//
+// GAP_DB_PATH exists so the test suite can point at a throwaway copy instead of
+// this file's own gap.db. Without it, a test run has no choice but to run the
+// real server against the real database, and "just be careful" is not a
+// boundary — the suite would be one bug away from deleting a real grievance.
+// Unset in normal use, so this is the same database as before.
+const db = new Database(process.env.GAP_DB_PATH || path.join(__dirname, 'gap.db'));
 
 // Initialize tables based on the schema design document
 db.exec(`
